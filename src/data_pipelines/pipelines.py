@@ -8,6 +8,8 @@ Think things like map/filter/reduce but all pumped up
 to be a bit more generator friendly
 
 """
+import itertools
+from .utilities import object_name, short_uuid
 
 
 class Pipeline(object):
@@ -20,9 +22,10 @@ class Pipeline(object):
     as a PipelineOperator
 
     """
-    def __init__(self, first, last):
+    def __init__(self, first, last, label=None):
         self.start = first
         self.end = last
+        self.label = label or short_uuid()
 
     def __iter__(self):
         return self.end
@@ -32,6 +35,27 @@ class Pipeline(object):
 
     def execute(self):
         return self.end.execute()
+
+    def to_json(self):
+        """
+        create a JSON configuration representing
+        this pipeline and its content
+        """
+        return {
+            'type': type(self).__name__,
+            'label': self.label,
+            'content': self.end.to_json(),
+        }
+
+    @staticmethod
+    def from_configuration(cls, config):
+        """
+        from_configuration
+
+        Return a Pipeline instance populated with operators
+        as defined in the configuration JSON
+        """
+        pass
 
 
 class PipelineOperator(object):
@@ -98,6 +122,19 @@ class PipelineOperator(object):
         """
         return [x for x in self]
 
+    def to_json(self):
+        """
+        _to_json_
+
+        """
+        result = {
+            "type": type(self).__name__,
+            "action": object_name(self.action),
+        }
+        if isinstance(self.input, PipelineOperator):
+            result['input'] = self.input.to_json()
+        return result
+
 
 class PipelineTransform(PipelineOperator):
     """
@@ -147,3 +184,73 @@ class PipelineFilter(PipelineOperator):
                 raise
             found_pass = self.action(value)
         return value
+
+
+class PipelineMap(PipelineOperator):
+    """
+    _PipelineMap_
+
+    Given an input iterable/pipeline,
+    tee it to several sub pipelines, and make those
+    pipelines iterate in step in a sane way.
+
+    """
+    def __init__(self, fillvalue=None):
+        super(PipelineMap, self).__init__()
+        self.pipelines = []
+        self.fillvalue = fillvalue
+        self._iter = None
+        self._pipeline_names = None
+
+    def _begin(self):
+        """
+        tee the input into each sub pipeline and then
+        zip the input iterators to create a single
+        iterable before commencing iteration
+
+        """
+        iters = list(
+            itertools.tee(self.input, len(self.pipelines))
+        )
+        for p in self.pipelines:
+            p.chain(iters.pop())
+
+        self._iter = itertools.izip_longest(
+            *self.pipelines, fillvalue=self.fillvalue
+        )
+        self._pipeline_names = [p.label for p in self.pipelines]
+
+    def next(self):
+        """
+        implement iteration by calling next on the izipped
+        iterator and mapping results of each pipeline to the
+        pipeline's label in the result dictionary
+        """
+        if self._iter is None:
+            self._begin()
+
+        value = dict(zip(self._pipeline_names, self._iter.next()))
+        return value
+
+    def add_pipeline(self, pipeline):
+        """
+
+        """
+        if not isinstance(pipeline, Pipeline):
+            msg = "Can only chain pipelines"
+            raise RuntimeError(msg)
+
+        self.pipelines.append(pipeline)
+
+    def to_json(self):
+        """
+        _to_json_
+
+        """
+        result = {
+            "type": type(self).__name__,
+            "pipelines": [p.to_json() for p in self.pipelines],
+        }
+        if isinstance(self.input, PipelineOperator):
+            result['input'] = self.input.to_json()
+        return result
