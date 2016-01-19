@@ -8,8 +8,13 @@ Think things like map/filter/reduce but all pumped up
 to be a bit more generator friendly
 
 """
+import json
 import itertools
 from .utilities import object_name, short_uuid
+from pluggage.plugins import Plugins
+
+
+LOADER = Plugins()
 
 
 class Pipeline(object):
@@ -45,17 +50,19 @@ class Pipeline(object):
             'type': type(self).__name__,
             'label': self.label,
             'content': self.end.to_json(),
+            'start': self.start.label,
+            'end': self.end.label
         }
 
     @staticmethod
-    def from_configuration(cls, config):
+    def from_configuration(config):
         """
         from_configuration
 
         Return a Pipeline instance populated with operators
         as defined in the configuration JSON
         """
-        pass
+        return build_pipeline(config)
 
 
 class PipelineOperator(object):
@@ -88,6 +95,7 @@ class PipelineOperator(object):
         super(PipelineOperator, self).__init__()
         self.action = action
         self.input = None
+        self.label = short_uuid()
 
     def __iter__(self):
         return self
@@ -130,6 +138,7 @@ class PipelineOperator(object):
         result = {
             "type": type(self).__name__,
             "action": object_name(self.action),
+            "label": self.label
         }
         if isinstance(self.input, PipelineOperator):
             result['input'] = self.input.to_json()
@@ -197,7 +206,7 @@ class PipelineMap(PipelineOperator):
     """
     def __init__(self, fillvalue=None):
         super(PipelineMap, self).__init__()
-        self.pipelines = []
+        self.inputs = []
         self.fillvalue = fillvalue
         self._iter = None
         self._pipeline_names = None
@@ -210,15 +219,15 @@ class PipelineMap(PipelineOperator):
 
         """
         iters = list(
-            itertools.tee(self.input, len(self.pipelines))
+            itertools.tee(self.input, len(self.inputs))
         )
-        for p in self.pipelines:
+        for p in self.inputs:
             p.chain(iters.pop())
 
         self._iter = itertools.izip_longest(
-            *self.pipelines, fillvalue=self.fillvalue
+            *self.inputs, fillvalue=self.fillvalue
         )
-        self._pipeline_names = [p.label for p in self.pipelines]
+        self._pipeline_names = [p.label for p in self.inputs]
 
     def next(self):
         """
@@ -239,8 +248,7 @@ class PipelineMap(PipelineOperator):
         if not isinstance(pipeline, Pipeline):
             msg = "Can only chain pipelines"
             raise RuntimeError(msg)
-
-        self.pipelines.append(pipeline)
+        self.inputs.append(pipeline)
 
     def to_json(self):
         """
@@ -249,8 +257,76 @@ class PipelineMap(PipelineOperator):
         """
         result = {
             "type": type(self).__name__,
-            "pipelines": [p.to_json() for p in self.pipelines],
+            "label": self.label,
+            "fillvalue": json.dumps(self.fillvalue),
+            "inputs": [p.to_json() for p in self.inputs],
         }
         if isinstance(self.input, PipelineOperator):
             result['input'] = self.input.to_json()
         return result
+
+
+MAKERS = {
+    'Pipeline': lambda: Pipeline(None, None, None),
+    'PipelineOperator': lambda: PipelineOperator(),
+    'PipelineTransform': lambda: PipelineTransform(),
+    'PipelineFilter': lambda: PipelineFilter(),
+    'PipelineMap': lambda: PipelineMap()
+}
+
+
+def build_pipeline(conf):
+    """
+    _build_pipeline_
+
+    Build a new pipeline instance from the config
+    provided, and build out its content recursively
+
+    """
+    t = conf['type']
+    ref = MAKERS[t]()
+    ref.label = conf['label']
+    content = build_pipeline_chain(conf['content'])
+    ref.start = find_label(content, conf['start'])
+    ref.end = content
+    return ref
+
+
+def find_label(chain, label):
+    """
+    _find_label_
+
+    traverse a chain and look for a particular label
+    """
+    if chain.label == label:
+        return chain
+    else:
+        if isinstance(chain, PipelineMap):
+            # pipeline maps are their own start and end
+            return chain
+        else:
+            return find_label(chain.input, label)
+
+
+def build_pipeline_chain(conf):
+    """
+    build a pipeline of operators from config
+    by recursing through the config
+
+    """
+    t = conf['type']
+    ref = MAKERS[t]()
+    if t == 'PipelineMap':
+        ref.fillvalue = json.loads(conf['fillvalue'])
+        for inp in conf["inputs"]:
+            pipe = build_pipeline(inp)
+            ref.add_pipeline(pipe)
+    else:
+        ref.label = conf['label']
+        action = conf['action']
+        action_ref = LOADER[action]
+        ref.action = action_ref
+        if conf.get('input'):
+            inp = build_pipeline_chain(conf['input'])
+            ref.chain(inp)
+    return ref
