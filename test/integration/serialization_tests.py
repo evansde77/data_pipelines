@@ -11,7 +11,6 @@ import fixtures.math as m
 class PipelineSerializationTests(unittest.TestCase):
     """test serializing/deserializing various chains"""
 
-    @unittest.skip("womp")
     def test_basic_pipeline(self):
         """test serializing simple pipeline"""
         square = p.PipelineTransform(action=m.square)
