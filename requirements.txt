@@ -1,2 +1,4 @@
 pluggage
+redis
+hiredis
 
