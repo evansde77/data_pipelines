@@ -12,6 +12,10 @@ def square(x):
     return x*x
 
 
+def to_int(x):
+    return int(x)
+
+
 class Power(object):
 
     def __init__(self, pow=1):

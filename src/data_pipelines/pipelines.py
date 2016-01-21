@@ -12,6 +12,7 @@ import json
 import itertools
 from .utilities import object_name, short_uuid
 from pluggage.plugins import Plugins
+import pluggage.registry
 
 
 LOADER = Plugins()
@@ -145,6 +146,61 @@ class PipelineOperator(object):
         return result
 
 
+class PipelineSource(PipelineOperator):
+    """
+    Wrapper for a first step operator that loads
+    a data source plugin and calls its hooks
+    """
+    def __init__(self, plugin=None, config=None):
+        super(PipelineSource, self).__init__()
+        self.input = None
+        self.action = None
+        self.plugin = plugin
+        self._plugin = None
+        self._config = config or dict()
+
+    def _begin(self):
+        """prep for iteration"""
+        factory = pluggage.registry.get_factory(
+            'data_pipelines.sources',
+            load_modules=['data_pipelines.sources']
+        )
+        self._plugin = factory(self.plugin, **self._config)
+        self._plugin.connect()
+
+    def _end(self):
+        """call end hook for source iterator to close
+        connections etc
+        """
+        self._plugin.disconnect()
+
+    def chain(self):
+        pass
+
+    def next(self):
+        """
+        _next_
+
+        Implements the iterator protocol
+        consume the next value from the input,
+        call action on it, return the value
+        """
+        if self._plugin is None:
+            self._begin()
+        try:
+            value = self._plugin.next()
+        except StopIteration:
+            self._end()
+            raise
+        return value
+
+    def to_json(self):
+        result = super(PipelineSource, self).to_json()
+        result['config'] = self._config
+        result['plugin'] = self.plugin
+        return result
+
+
 class PipelineTransform(PipelineOperator):
     """
     Pipeline operator that replaces the data elements
@@ -268,6 +324,7 @@ class PipelineMap(PipelineOperator):
 
 MAKERS = {
     'Pipeline': lambda: Pipeline(None, None, None),
+    'PipelineSource': lambda: PipelineSource(),
     'PipelineOperator': lambda: PipelineOperator(),
     'PipelineTransform': lambda: PipelineTransform(),
     'PipelineFilter': lambda: PipelineFilter(),
