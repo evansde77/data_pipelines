@@ -382,7 +382,7 @@ def build_pipeline_chain(conf):
         ref.label = conf['label']
         ref.action = None
         ref.plugin = conf['plugin']
-        ref.config = conf['config']
+        ref._config = conf['config']
     else:
         ref.label = conf['label']
         action = conf['action']

@@ -17,11 +17,9 @@ class PipelineSerializationTests(unittest.TestCase):
 
         double = p.PipelineTransform(action=m.double)
         double.chain(square)
-        end = p.PipelineOperator(action=m.printer)
-        end.chain(double)
 
         data = (x for x in range(10))
-        pipeline = p.Pipeline(square, end)
+        pipeline = p.Pipeline(square, double)
         pipeline.chain(data)
 
         pipeline_json = pipeline.to_json()
@@ -71,11 +69,28 @@ class PipelineSerializationTests(unittest.TestCase):
 
         self.assertEqual(result1, result2)
 
+    def test_source_pipeline(self):
+        """test pipeline containing a source"""
 
-    def test_complex_pipeline_map(self):
-        """test more complicated map contents"""
+        source = p.PipelineSource(plugin='Integers', config={'limit': 10})
 
+        convert = p.PipelineTransform(action=m.to_int)
+        square = p.PipelineTransform(action=m.square)
+        square.chain(convert)
+        double = p.PipelineTransform(action=m.double)
+        double.chain(square)
 
+        pipeline = p.Pipeline(convert, double)
+        pipeline.chain(source)
+
+        p_json = pipeline.to_json()
+
+        p2 = p.Pipeline.from_configuration(p_json)
+        result1 = pipeline.execute()
+        result2 = p2.execute()
+
+        self.assertEqual(result1, [0, 2, 8, 18, 32, 50, 72, 98, 128, 162])
+        self.failUnless(result1 == result2)
 
 if __name__ == '__main__':
     unittest.main()
