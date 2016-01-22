@@ -378,6 +378,11 @@ def build_pipeline_chain(conf):
         for inp in conf["inputs"]:
             pipe = build_pipeline(inp)
             ref.add_pipeline(pipe)
+    elif t == 'PipelineSource':
+        ref.label = conf['label']
+        ref.action = None
+        ref.plugin = conf['plugin']
+        ref.config = conf['config']
     else:
         ref.label = conf['label']
         action = conf['action']
