@@ -1,4 +1,7 @@
 pluggage
 redis
 hiredis
-
+requests
+Flask==0.10.1
+Flask-RESTful==0.3.4
+uWSGI==2.0.11.1

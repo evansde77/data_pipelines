@@ -392,3 +392,15 @@ def build_pipeline_chain(conf):
             inp = build_pipeline_chain(conf['input'])
             ref.chain(inp)
     return ref
+
+
+def run_pipeline(config):
+    """
+    run_pipeline
+
+    Given a JSON config, instantiate a pipeline object
+    from the config and execute it.
+    """
+    json_config = json.loads(config)
+    pipeline = Pipeline.from_configuration(json_config)
+    return pipeline.execute()
